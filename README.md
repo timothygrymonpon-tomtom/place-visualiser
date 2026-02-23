@@ -5,14 +5,16 @@ A browser-based geospatial visualisation tool for CSV and JSON/JSONL datasets. U
 ## Features
 
 - **File upload** — CSV, JSON, JSONL/NDJSON (up to 500 MB / 200 000 rows)
-- **Auto-detection** — lat/lng/confidence/category columns detected from column names
+- **Auto-detection** — lat/lng/confidence/category/label columns detected from column names
 - **OSM map background** — Leaflet.js with standard pan/zoom controls
 - **Confidence-based zoom filtering** — records with confidence = 100 always visible; lower-confidence records revealed progressively as you zoom in
-- **Emoji icons** — derived from a category field via keyword matching (~30 POI types)
-- **Feature filter** — checkbox list per category value (All / None toggles)
-- **Feature labels** — any column rendered as black text labels above icons, with grid-based deduplication to prevent crowding
-- **Hover tooltip** — configurable fields shown on mouse-over
-- **High performance** — typed arrays + viewport culling handles 100k+ records smoothly
+- **Emoji icons** — derived from a category field via keyword matching (33 POI types covered)
+- **Feature filter** — checkbox list per category value with All / None toggles, sorted by count
+- **Feature labels** — any column rendered as black text labels next to icons, with 80×80 px grid deduplication to prevent crowding
+- **Hover tooltip** — configurable fields shown on mouse-over (colour-coded confidence, throttled)
+- **Info bar** — live threshold / visible count / zoom readout in the top-right corner
+- **Fit to data** — reset button re-fits the map and restarts the confidence zoom curve
+- **High performance** — Float64Array typed arrays + viewport culling handles 100k+ records smoothly
 
 ## Quick Start
 
@@ -40,7 +42,7 @@ The zoom threshold formula is:
 threshold = 100 / 2^((currentZoom − baseZoom) / 2)
 ```
 
-Every 2 Leaflet zoom levels zoomed in, the visible confidence threshold halves. Confidence values are auto-normalised: `[0,1]` → ×100, `>100` → min-max scaled to `[0,100]`.
+Every 2 Leaflet zoom levels zoomed in, the visible confidence threshold halves. Confidence values are auto-normalised server-side: `[0,1]` → ×100, `>100` → min-max scaled to `[0,100]`.
 
 ## File Formats
 
@@ -50,8 +52,14 @@ Every 2 Leaflet zoom levels zoomed in, the visible confidence threshold halves. 
 | `.json` | Standard JSON array |
 | `.jsonl` / `.ndjson` | Newline-delimited JSON, one object per line |
 
+## Icon Categories
+
+Icons are derived from the category field via keyword matching (first match wins):
+
+🍽️ restaurant · ☕ cafe/bakery · 🍺 bar/pub · 🏨 hotel · 🏥 hospital · 💊 pharmacy · 🎓 school/university · 🏦 bank · 💳 ATM · 🛒 supermarket · 🛍️ shop · ⛽ fuel · 🅿️ parking · ✈️ airport · 🚂 train/metro · 🚌 bus · 🏛️ museum · 🎬 cinema/theatre · 🏟️ sport/gym · 🌳 park · ⛪ church/mosque · 🚔 police · 🚒 fire station · 📮 post office · 📚 library · 🏢 office · 🗺️ tourist/landmark · 🏖️ beach/marina · ⛰️ mountain/ski · 💆 spa/beauty · 🚗 car/auto · 👔 laundry · 🥡 takeaway · 📍 default
+
 ## Stack
 
 - **Backend**: Python 3, Flask, pandas
-- **Frontend**: Leaflet.js 1.9.4, HTML5 Canvas, vanilla JS
+- **Frontend**: Leaflet.js 1.9.4, D3.js v7, HTML5 Canvas, vanilla JS
 - **Port**: 5004

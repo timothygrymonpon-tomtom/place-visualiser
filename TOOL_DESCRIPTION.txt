@@ -25,31 +25,53 @@ Left sidebar — Column Mapping
   · Latitude / Longitude  — select the coordinate columns
   · Confidence            — optional 0–100 score (or 0–1, auto-normalised)
   · Category field        — used to pick the icon for each record
-                            (auto-detects "featurename", "category", "type")
+                            (auto-detects: featurename → category → type →
+                             any column containing "categor" or "feature")
 
 Left sidebar — Feature Labels
   Select any column to use as a map label. Labels are drawn in black text
-  above each icon. A spatial grid deduplication prevents label crowding —
-  one label per 80×80 px cell at any zoom level. Auto-detects "poi_name".
+  next to each icon. A spatial grid deduplication prevents label crowding —
+  one label per 80×80 px cell at any zoom level.
+  Auto-detects: poi_name → name → any column containing "name".
 
 Left sidebar — Feature Filter
   After clicking Visualise, a scrollable checkbox list appears showing all
-  unique category values (sorted by count). Use All / None buttons to quickly
-  toggle groups. Only checked categories are rendered on the map.
+  unique category values (sorted by count descending). Use All / None buttons
+  to quickly toggle groups. Only checked categories are rendered on the map.
 
 Left sidebar — Tooltip Fields
-  Select any columns to include in the hover tooltip shown when the mouse
-  moves over a record.
+  Select any columns to include in the hover tooltip shown on mouse-over.
 
 Left sidebar — Visualise button
-  Fetches the data from the server and renders it on the map. Updates the
-  Statistics panel with total record count and current visible count.
+  Fetches data from the server and renders it on the map.
+
+Left sidebar — Statistics
+  · Total records    — number of records loaded (after NaN-drop)
+  · Visible now      — records currently rendered at the current zoom
+  · Min confidence   — the active confidence threshold (≥ value shown)
+  · Map zoom         — current Leaflet zoom level (decimal)
 
 Map area
   · OpenStreetMap tiles via Leaflet.js
-  · Transparent HTML5 Canvas overlay for icons and labels (no map tiles replaced)
+  · Transparent HTML5 Canvas overlay for icons and labels (pointer-events:none)
   · Standard Leaflet pan/zoom controls
-  · Hover tooltip following the mouse cursor
+
+Info bar (top-right overlay)
+  Always-visible readout of current threshold, visible count, and zoom level.
+  Updates in real time as the user pans or zooms.
+
+"No records visible" hint
+  Centred overlay shown when the confidence threshold exceeds all loaded
+  records. Prompts the user to zoom in.
+
+"Fit to data" button (bottom-left)
+  Re-fits the map to the data bounding box and resets baseZoom so the
+  confidence zoom curve restarts from the fitted zoom level.
+
+Hover tooltip
+  Appears near the cursor when hovering within 25 px of a record.
+  Shows: icon, record number, lat/lng, confidence (colour-coded), and any
+  checked tooltip fields. Throttled to 40 ms to avoid lag on large datasets.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -67,10 +89,12 @@ current map zoom level:
   · Every 2 Leaflet zoom levels zoomed in, the threshold halves, gradually
     revealing lower-confidence records.
   · baseZoom is set at load time by fitting the map to the data bounds.
+    If the dataset's maximum confidence is below 100, baseZoom is adjusted
+    so the highest-confidence records are visible on initial load.
 
 Confidence auto-normalisation (server-side):
-  · Values in [0, 1]     → multiplied by 100
-  · Values > 100         → min-max scaled to [0, 100]
+  · Values in [0, 1]       → multiplied by 100
+  · Values > 100           → min-max scaled to [0, 100]
   · Values already in (1, 100] → used as-is
 
 
@@ -79,22 +103,44 @@ ICONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Each record is rendered as an emoji icon derived from its category value.
-Keyword matching (case-insensitive) covers ~30 POI categories, including:
+Keyword matching is case-insensitive and substring-based. Icon size scales
+with zoom depth (14 px at base zoom up to 30 px when zoomed in).
 
-  🍽️  restaurant / dining / food / bistro
-  ☕  cafe / coffee / bakery / pastry
-  🍺  bar / pub / brewery / beer / wine
-  🏨  hotel / hostel / lodging / accommodation
-  🏪  shop / store / retail / market / supermarket
-  ⛽  fuel / petrol / gas station
-  🏥  hospital / clinic / medical / pharmacy / health
-  🏫  school / university / college / education
-  🏛️  museum / gallery / theatre / cinema / arts
-  ⛪  church / cathedral / mosque / synagogue / temple
-  🏦  bank / atm / finance
-  🚌  bus / transit / transport / station / airport
-  🌳  park / garden / nature / forest / recreation
-  🏨  parking / car park
+Full keyword-to-icon mapping (first match wins):
+
+  🍽️  restaurant / dining / food service / eat / bistro / brasserie / traiteur
+  ☕  cafe / coffee / bakery / pastry / tearoom / patisserie
+  🍺  bar / pub / brewery / beer / wine / cocktail / nightclub / lounge
+  🏨  hotel / hostel / lodging / accommodation / motel / inn / resort / b&b
+  🏥  hospital / clinic / medical / health / care center / urgent care
+  💊  pharmacy / drug / chemist / apothec / drugstore
+  🎓  school / university / college / education / academy / kindergarten / lycee
+  🏦  bank / finance / financial / credit union / savings
+  💳  atm / cash machine / cash point
+  🛒  supermarket / grocery / food store / convenience / delicatessen
+  🛍️  shop / store / boutique / mall / shopping / retail / market / bazaar
+  ⛽  gas / fuel / petrol / filling station / service station
+  🅿️  parking / garage / park & ride / car park
+  ✈️  airport / aerodrome / aviation / air terminal
+  🚂  train / railway / metro / subway / tram / rail / gare
+  🚌  bus / terminal / coach / shuttle
+  🏛️  museum / exhibition / gallery / art center
+  🎬  cinema / movie / theatre / theater / opera / concert / performance
+  🏟️  sport / gym / fitness / stadium / arena / swimming / pool / tennis / golf
+  🌳  park / garden / nature / forest / recreation / playground / square
+  ⛪  church / mosque / temple / synagogue / religious / worship / cathedral
+  🚔  police / law enforcement / gendarmerie
+  🚒  fire station / fire brigade / pompiers
+  📮  post office / postal / mail / letterbox / postbox
+  📚  library / book / mediatheque
+  🏢  office / business / corporate / company / headquarters
+  🗺️  tourist / attraction / landmark / sightseeing / monument / castle
+  🏖️  beach / coast / marina / harbour / port
+  ⛰️  mountain / hill / ski / alpine
+  💆  spa / beauty / salon / wellness / massage / hairdresser / coiffeur
+  🚗  car / auto / vehicle / rental / dealership / repair
+  👔  laundry / launderette / dry clean / pressing
+  🥡  food / takeaway / fast food / snack / sandwich
   📍  (default — no matching category)
 
 
@@ -105,6 +151,7 @@ TECHNICAL NOTES
   · Language / framework : Python 3, Flask, pandas
   · Frontend             : Single HTML file (templates/index.html),
                            Leaflet.js 1.9.4 via CDN for map rendering,
+                           D3.js v7 (d3.max for baseZoom calculation),
                            HTML5 Canvas for point/label rendering
   · Port                 : 5004
   · Startup              : python3 app.py
@@ -112,3 +159,6 @@ TECHNICAL NOTES
   · File formats         : CSV, JSON, JSONL / NDJSON
   · Canvas rendering     : Float64Array typed arrays + viewport culling
                            for smooth performance at large record counts
+  · Smart re-fetch       : Changing label/category field only triggers a
+                           server re-fetch if the field is not already present
+                           in loaded records; otherwise redraws in-place
