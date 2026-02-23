@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Place Visualiser</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 270px;
+      min-width: 270px;
+      background: #1a1d27;
+      border-right: 1px solid #252840;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      padding: 14px 12px;
+    }
+
+    .app-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #4fc3f7;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 0 6px;
+      border-bottom: 1px solid #252840;
+    }
+
+    .section {
+      background: #21243a;
+      border: 1px solid #2a2e4a;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #5c6280;
+      margin-bottom: 8px;
+    }
+
+    #upload-btn {
+      width: 100%;
+      padding: 9px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #upload-btn:hover { background: #1d4ed8; }
+    #upload-btn:disabled { background: #1e2a4a; color: #4a5070; cursor: default; }
+    #file-input { display: none; }
+
+    #file-info {
+      margin-top: 7px;
+      font-size: 11px;
+      color: #5c6280;
+      min-height: 14px;
+      word-break: break-all;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 10px;
+      color: #7c85a8;
+      margin: 8px 0 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .field-label:first-child { margin-top: 0; }
+
+    select {
+      width: 100%;
+      background: #1a1d2e;
+      color: #d8ddf5;
+      border: 1px solid #303560;
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus { border-color: #4fc3f7; }
+
+    .scrollable-list {
+      max-height: 150px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .scrollable-list::-webkit-scrollbar { width: 4px; }
+    .scrollable-list::-webkit-scrollbar-track { background: transparent; }
+    .scrollable-list::-webkit-scrollbar-thumb { background: #2d3260; border-radius: 4px; }
+
+    .field-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #9ba3c8;
+    }
+    .field-item:hover { background: #2a2e4a; }
+    .field-item input { cursor: pointer; accent-color: #4fc3f7; flex-shrink: 0; }
+    .field-item label { cursor: pointer; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Mini buttons (All / None) */
+    .mini-btn-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .mini-btn {
+      flex: 1;
+      padding: 4px 0;
+      background: #2a2e4a;
+      border: 1px solid #3d4270;
+      color: #8090b8;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .mini-btn:hover { background: #3a3e60; color: #c0c8e8; }
+
+    #apply-btn {
+      width: 100%;
+      padding: 10px;
+      background: #059669;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    #apply-btn:hover { background: #047857; }
+    #apply-btn:disabled { background: #1a2e24; color: #3a5a48; cursor: default; }
+
+    /* Stats */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      padding: 3px 0;
+    }
+    .stat-key { color: #5c6280; }
+    .stat-val { color: #d0d5ee; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .stat-val.accent { color: #4fc3f7; }
+
+    .conf-hint {
+      font-size: 10px;
+      color: #4a5270;
+      line-height: 1.5;
+      padding-top: 2px;
+    }
+
+    /* ── MAIN MAP AREA ───────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #map {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none;
+      z-index: 400;
+      display: block;
+    }
+
+    #overlay, #info-bar, #no-pts-hint, #reset-btn {
+      z-index: 1001;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    #overlay .icon { font-size: 56px; margin-bottom: 14px; }
+    #overlay .msg { font-size: 17px; color: #3a4070; font-weight: 500; }
+    #overlay .sub { font-size: 13px; color: #2a2e50; margin-top: 6px; }
+
+    #info-bar {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(16, 18, 32, 0.88);
+      border: 1px solid #252840;
+      border-radius: 7px;
+      padding: 8px 13px;
+      font-size: 12px;
+      color: #6c7598;
+      display: none;
+      backdrop-filter: blur(4px);
+      line-height: 1.7;
+      pointer-events: none;
+    }
+    #info-bar b { color: #4fc3f7; }
+
+    #no-pts-hint {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(16, 18, 32, 0.92);
+      border: 1px solid #2a2e50;
+      border-radius: 10px;
+      padding: 18px 28px;
+      text-align: center;
+      display: none;
+      pointer-events: none;
+    }
+    #no-pts-hint .nph-icon { font-size: 30px; margin-bottom: 8px; }
+    #no-pts-hint .nph-msg { font-size: 14px; color: #7c85a8; }
+    #no-pts-hint .nph-sub { font-size: 12px; color: #4a5270; margin-top: 4px; }
+
+    #reset-btn {
+      position: absolute;
+      bottom: 32px; left: 12px;
+      background: rgba(26, 29, 46, 0.9);
+      border: 1px solid #2d3260;
+      color: #8090b8;
+      padding: 7px 13px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+      transition: all 0.15s;
+      backdrop-filter: blur(4px);
+    }
+    #reset-btn:hover { background: rgba(37, 40, 64, 0.95); color: #b0b8d8; }
+
+    /* Tooltip */
+    #tooltip {
+      position: fixed;
+      background: rgba(14, 16, 28, 0.97);
+      border: 1px solid #2d3260;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+      max-width: 300px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+      z-index: 9999;
+    }
+    .tt-head {
+      font-weight: 600;
+      color: #4fc3f7;
+      margin-bottom: 7px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #252840;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .tt-row { display: flex; gap: 10px; padding: 2px 0; }
+    .tt-key { color: #5c6280; min-width: 75px; flex-shrink: 0; }
+    .tt-val { color: #d0d5ee; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ──────────────────────────────────────────────────────────── -->
+<div id="sidebar">
+
+  <div class="app-title">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="10" r="3"/>
+      <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 6.9 8 11.7z"/>
+    </svg>
+    Place Visualiser
+  </div>
+
+  <!-- File upload -->
+  <div class="section">
+    <div class="section-title">Data Source</div>
+    <input type="file" id="file-input" accept=".csv,.json,.jsonl,.ndjson">
+    <button id="upload-btn" onclick="document.getElementById('file-input').click()">
+      📂 Upload File
+    </button>
+    <div id="file-info">No file loaded — CSV or JSON/JSONL</div>
+  </div>
+
+  <!-- Column mapping -->
+  <div class="section" id="mapping-section" style="display:none">
+    <div class="section-title">Column Mapping</div>
+
+    <span class="field-label">Latitude</span>
+    <select id="sel-lat"></select>
+
+    <span class="field-label">Longitude</span>
+    <select id="sel-lng"></select>
+
+    <span class="field-label">Confidence (0 – 100)</span>
+    <select id="sel-conf"></select>
+
+    <span class="field-label">Category (icons + filter)</span>
+    <select id="sel-category"></select>
+
+    <div class="conf-hint" style="margin-top:8px">
+      Confidence 100 = always visible.<br>
+      Lower values appear as you zoom in.
+    </div>
+  </div>
+
+  <!-- Feature labels -->
+  <div class="section" id="label-section" style="display:none">
+    <div class="section-title">Feature Labels</div>
+    <span class="field-label">Label records with</span>
+    <select id="sel-label"></select>
+    <div class="conf-hint" style="margin-top:6px">
+      Labels auto-thin to avoid overlap. Zoom in for more.
+    </div>
+  </div>
+
+  <!-- Feature filter (populated after Visualize) -->
+  <div class="section" id="filter-section" style="display:none">
+    <div class="section-title">Feature Filter</div>
+    <div class="mini-btn-row">
+      <button class="mini-btn" onclick="filterAll(true)">All</button>
+      <button class="mini-btn" onclick="filterAll(false)">None</button>
+    </div>
+    <div id="filter-list" class="scrollable-list"></div>
+  </div>
+
+  <!-- Tooltip fields -->
+  <div class="section" id="fields-section" style="display:none">
+    <div class="section-title">Tooltip Fields</div>
+    <div id="fields-list" class="scrollable-list"></div>
+  </div>
+
+  <!-- Apply -->
+  <button id="apply-btn" disabled>▶ Visualize</button>
+
+  <!-- Stats -->
+  <div class="section" id="stats-section" style="display:none">
+    <div class="section-title">Statistics</div>
+    <div class="stat-row">
+      <span class="stat-key">Total records</span>
+      <span class="stat-val" id="stat-total">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-key">Visible now</span>
+      <span class="stat-val accent" id="stat-visible">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-key">Min confidence</span>
+      <span class="stat-val" id="stat-threshold">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-key">Map zoom</span>
+      <span class="stat-val" id="stat-zoom">—</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── MAIN MAP AREA ──────────────────────────────────────────────────────── -->
+<div id="main">
+  <div id="map"></div>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <div class="icon">📍</div>
+    <div class="msg" style="color:#aab">Upload a file to begin</div>
+    <div class="sub">Supports CSV · JSON · JSONL with lat/lng coordinates</div>
+  </div>
+
+  <div id="info-bar">
+    Threshold <b id="ib-threshold">100</b> &nbsp;·&nbsp;
+    Visible <b id="ib-visible">0</b> &nbsp;·&nbsp;
+    Zoom <b id="ib-zoom">—</b>
+  </div>
+
+  <div id="no-pts-hint">
+    <div class="nph-icon">🔍</div>
+    <div class="nph-msg">No records visible at this zoom level</div>
+    <div class="nph-sub">Scroll to zoom in — lower-confidence records will appear</div>
+  </div>
+
+  <button id="reset-btn" onclick="resetView()">⊡ Fit to data</button>
+</div>
+
+<div id="tooltip"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let allRecords      = [];
+let xs, ys, cs;              // Float64Array for fast iteration
+let icons           = [];    // pre-computed emoji per record
+let extraFields     = [];
+let hasData         = false;
+let baseZoom        = null;
+let dataBounds      = null;
+let allCategories   = [];    // sorted unique category values
+let enabledCategories = new Set();
+
+// ── Leaflet map ───────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [50, 10],
+  zoom: 4,
+  zoomSnap: 0.5,
+  zoomDelta: 0.5,
+  preferCanvas: false,
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+// ── Canvas overlay ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+function syncCanvasSize() {
+  const c = map.getContainer();
+  canvas.width  = c.clientWidth;
+  canvas.height = c.clientHeight;
+}
+
+window.addEventListener('resize', () => {
+  map.invalidateSize();
+  syncCanvasSize();
+  drawCanvas();
+});
+syncCanvasSize();
+
+map.on('move zoom viewreset', drawCanvas);
+
+// ── Confidence threshold ──────────────────────────────────────────────────────
+// threshold = 100 / 2^((currentZoom – baseZoom) / 2)
+// Every 2 zoom levels in → threshold halves (gradual reveal).
+function getThreshold() {
+  if (baseZoom === null) return 100;
+  return Math.max(0, Math.min(100, 100 / Math.pow(2, (map.getZoom() - baseZoom) / 2)));
+}
+
+// ── Icon mapping ──────────────────────────────────────────────────────────────
+const ICON_MAP = [
+  [['restaurant', 'dining', 'food service', 'eat', 'bistro', 'brasserie', 'traiteur'], '🍽️'],
+  [['cafe', 'coffee', 'bakery', 'pastry', 'tearoom', 'tea room', 'patisserie'], '☕'],
+  [['bar', 'pub', 'brewery', 'beer', 'wine', 'cocktail', 'nightclub', 'nightlife', 'lounge'], '🍺'],
+  [['hotel', 'hostel', 'lodging', 'accommodation', 'motel', 'inn', 'resort', 'bed and breakfast', 'b&b'], '🏨'],
+  [['hospital', 'clinic', 'medical', 'health', 'care center', 'urgent care'], '🏥'],
+  [['pharmacy', 'drug', 'chemist', 'apothec', 'drugstore'], '💊'],
+  [['school', 'university', 'college', 'education', 'academy', 'kindergarten', 'nursery', 'lycee', 'lycée'], '🎓'],
+  [['bank', 'finance', 'financial', 'credit union', 'savings'], '🏦'],
+  [['atm', 'cash machine', 'cash point'], '💳'],
+  [['supermarket', 'grocery', 'food store', 'convenience', 'delicatessen', 'deli'], '🛒'],
+  [['shop', 'store', 'boutique', 'mall', 'shopping', 'retail', 'market', 'bazaar'], '🛍️'],
+  [['gas', 'fuel', 'petrol', 'filling station', 'service station'], '⛽'],
+  [['parking', 'garage', 'park & ride', 'car park'], '🅿️'],
+  [['airport', 'aerodrome', 'aviation', 'air terminal'], '✈️'],
+  [['train', 'railway', 'metro', 'subway', 'tram', 'rail', 'gare'], '🚂'],
+  [['bus', 'terminal', 'coach', 'shuttle'], '🚌'],
+  [['museum', 'exhibition', 'gallery', 'art center', 'art centre'], '🏛️'],
+  [['cinema', 'movie', 'theatre', 'theater', 'opera', 'concert', 'performance'], '🎬'],
+  [['sport', 'gym', 'fitness', 'stadium', 'arena', 'swimming', 'pool', 'tennis', 'golf'], '🏟️'],
+  [['park', 'garden', 'nature', 'forest', 'recreation', 'playground', 'square'], '🌳'],
+  [['church', 'mosque', 'temple', 'synagogue', 'religious', 'worship', 'cathedral', 'chapel'], '⛪'],
+  [['police', 'law enforcement', 'gendarmerie'], '🚔'],
+  [['fire station', 'fire brigade', 'pompiers'], '🚒'],
+  [['post office', 'postal', 'mail', 'letterbox', 'postbox'], '📮'],
+  [['library', 'book', 'mediatheque', 'médiathèque'], '📚'],
+  [['office', 'business', 'corporate', 'company', 'headquarters'], '🏢'],
+  [['tourist', 'attraction', 'landmark', 'sightseeing', 'monument', 'castle', 'chateau'], '🗺️'],
+  [['beach', 'coast', 'marina', 'harbour', 'harbor', 'port'], '🏖️'],
+  [['mountain', 'hill', 'ski', 'alpine'], '⛰️'],
+  [['spa', 'beauty', 'salon', 'wellness', 'massage', 'hairdresser', 'coiffeur'], '💆'],
+  [['car', 'auto', 'vehicle', 'rental', 'dealership', 'garage', 'repair'], '🚗'],
+  [['laundry', 'launderette', 'dry clean', 'pressing'], '👔'],
+  [['food', 'takeaway', 'fast food', 'snack', 'sandwich'], '🥡'],
+];
+
+function getIcon(category) {
+  if (!category) return '📍';
+  const c = String(category).toLowerCase();
+  for (const [kws, icon] of ICON_MAP) {
+    if (kws.some(k => c.includes(k))) return icon;
+  }
+  return '📍';
+}
+
+// ── Colour helper (tooltip only) ──────────────────────────────────────────────
+function confColorHSL(c) {
+  return `hsl(${Math.min(120, Math.max(0, c * 1.2))},85%,55%)`;
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+let visibleCount = 0;
+
+function drawCanvas() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!hasData) return;
+
+  const threshold  = getThreshold();
+  const z          = map.getZoom();
+  const dz         = baseZoom !== null ? z - baseZoom : 0;
+  const catField   = document.getElementById('sel-category').value;
+  const labelField = document.getElementById('sel-label').value;
+
+  // Icon size grows with zoom depth
+  const iconSize = Math.max(14, Math.min(30, 14 + dz * 1.8));
+  const halfIcon = iconSize / 2;
+  const margin   = halfIcon + 4;
+
+  visibleCount = 0;
+  const n       = xs.length;
+  const labelPts = [];   // [px, py, recordIndex, ...]
+
+  // Set up icon drawing once
+  ctx.font         = `${iconSize}px serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i < n; i++) {
+    if (cs[i] < threshold) continue;
+
+    // Category filter
+    if (catField && allCategories.length > 0) {
+      const cat = String(allRecords[i][catField] ?? '(unknown)');
+      if (!enabledCategories.has(cat)) continue;
+    }
+
+    const pt = map.latLngToContainerPoint([ys[i], xs[i]]);
+    if (pt.x < -margin || pt.x > W + margin || pt.y < -margin || pt.y > H + margin) continue;
+
+    visibleCount++;
+    ctx.fillText(icons[i] || '📍', pt.x, pt.y);
+
+    if (labelField) labelPts.push(pt.x, pt.y, i);
+  }
+
+  // ── Label pass — grid dedup, simple black text ────────────────────────────
+  if (labelField && labelPts.length > 0) {
+    const fontSize  = Math.max(10, Math.min(13, 10 + dz * 0.3));
+    ctx.font        = `${fontSize}px sans-serif`;
+    ctx.textAlign   = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle   = 'rgba(0,0,0,0.85)';
+    const CELL      = 80;
+    const occupied  = new Set();
+
+    for (let j = 0; j < labelPts.length; j += 3) {
+      const lx  = labelPts[j] + halfIcon + 3;
+      const ly  = labelPts[j + 1] + Math.round(fontSize / 3);
+      const key = `${Math.floor(lx / CELL)},${Math.floor(ly / CELL)}`;
+      if (occupied.has(key)) continue;
+      occupied.add(key);
+      const val = allRecords[labelPts[j + 2]][labelField];
+      if (val == null) continue;
+      ctx.fillText(String(val).substring(0, 30), lx, ly);
+    }
+  }
+
+  // ── UI updates ──────────────────────────────────────────────────────────────
+  document.getElementById('no-pts-hint').style.display  = (visibleCount === 0) ? '' : 'none';
+  const th = threshold.toFixed(0);
+  document.getElementById('stat-visible').textContent   = visibleCount.toLocaleString();
+  document.getElementById('stat-threshold').textContent = `≥ ${th}`;
+  document.getElementById('stat-zoom').textContent      = z.toFixed(2);
+  document.getElementById('ib-threshold').textContent   = th;
+  document.getElementById('ib-visible').textContent     = visibleCount.toLocaleString();
+  document.getElementById('ib-zoom').textContent        = z.toFixed(2);
+}
+
+// ── Filter helpers ────────────────────────────────────────────────────────────
+function populateFilter(catField) {
+  const counts = {};
+  for (const rec of allRecords) {
+    const v = String(rec[catField] ?? '(unknown)');
+    counts[v] = (counts[v] || 0) + 1;
+  }
+  // Sort by count descending
+  allCategories     = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  enabledCategories = new Set(allCategories);
+
+  const list = document.getElementById('filter-list');
+  list.innerHTML = '';
+  for (const cat of allCategories) {
+    const id  = 'fc-' + Math.random().toString(36).slice(2);
+    const div = document.createElement('div');
+    div.className = 'field-item';
+    div.innerHTML = `
+      <input type="checkbox" id="${id}" value="${esc(cat)}" checked>
+      <label for="${id}">${getIcon(cat)} ${esc(cat)} <span style="color:#4a5270;font-size:10px">${counts[cat].toLocaleString()}</span></label>
+    `;
+    div.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) enabledCategories.add(cat);
+      else enabledCategories.delete(cat);
+      drawCanvas();
+    });
+    list.appendChild(div);
+  }
+  document.getElementById('filter-section').style.display = '';
+}
+
+function filterAll(enable) {
+  document.querySelectorAll('#filter-list input[type=checkbox]').forEach(cb => {
+    cb.checked = enable;
+    if (enable) enabledCategories.add(cb.value);
+    else enabledCategories.delete(cb.value);
+  });
+  drawCanvas();
+}
+
+// ── File upload ───────────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const btn  = document.getElementById('upload-btn');
+  const info = document.getElementById('file-info');
+  btn.disabled     = true;
+  info.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res  = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    info.textContent = `${file.name} · ${data.row_count.toLocaleString()} rows`;
+    buildSelectors(data.columns, data.guesses);
+    document.getElementById('mapping-section').style.display = '';
+    document.getElementById('label-section').style.display   = '';
+    document.getElementById('fields-section').style.display  = '';
+    document.getElementById('apply-btn').disabled = false;
+
+  } catch (err) {
+    info.textContent = '❌ ' + err.message;
+  } finally {
+    btn.disabled   = false;
+    e.target.value = '';
+  }
+});
+
+function buildSelectors(cols, guesses) {
+  const none = '<option value="">— none —</option>';
+  const opts = none + cols.map(c =>
+    `<option value="${esc(c)}">${esc(c)}</option>`
+  ).join('');
+
+  ['sel-lat', 'sel-lng', 'sel-conf', 'sel-label', 'sel-category'].forEach(id => {
+    document.getElementById(id).innerHTML = opts;
+  });
+
+  if (guesses.lat)        document.getElementById('sel-lat').value  = guesses.lat;
+  if (guesses.lng)        document.getElementById('sel-lng').value  = guesses.lng;
+  if (guesses.confidence) document.getElementById('sel-conf').value = guesses.confidence;
+
+  // Auto-detect label field
+  const labelGuess =
+    cols.find(c => c === 'poi_name') ||
+    cols.find(c => c.toLowerCase() === 'poi_name') ||
+    cols.find(c => c.toLowerCase() === 'name') ||
+    cols.find(c => c.toLowerCase().includes('name'));
+  if (labelGuess) document.getElementById('sel-label').value = labelGuess;
+
+  // Auto-detect category field
+  const catGuess =
+    cols.find(c => c === 'featurename') ||
+    cols.find(c => c.toLowerCase() === 'featurename') ||
+    cols.find(c => c.toLowerCase() === 'category') ||
+    cols.find(c => c.toLowerCase() === 'type') ||
+    cols.find(c => c.toLowerCase().includes('categor') || c.toLowerCase().includes('feature'));
+  if (catGuess) document.getElementById('sel-category').value = catGuess;
+
+  // Tooltip checklist
+  const list = document.getElementById('fields-list');
+  list.innerHTML = '';
+  cols.forEach(col => {
+    const id  = 'ff-' + Math.random().toString(36).slice(2);
+    const div = document.createElement('div');
+    div.className = 'field-item';
+    div.innerHTML = `
+      <input type="checkbox" id="${id}" value="${esc(col)}">
+      <label for="${id}">${esc(col)}</label>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// ── Column-change handlers ────────────────────────────────────────────────────
+// Label field: redraw if data present, reload if field not yet fetched
+document.getElementById('sel-label').addEventListener('change', () => {
+  if (!hasData) return;
+  const lf = document.getElementById('sel-label').value;
+  if (!lf || (allRecords.length > 0 && lf in allRecords[0])) drawCanvas();
+  else loadData();
+});
+
+// Category field: rebuild icons + filter, reload if field not yet fetched
+document.getElementById('sel-category').addEventListener('change', () => {
+  if (!hasData) return;
+  const cf = document.getElementById('sel-category').value;
+  if (!cf) {
+    icons.fill('📍');
+    allCategories = [];
+    enabledCategories.clear();
+    document.getElementById('filter-section').style.display = 'none';
+    drawCanvas();
+    return;
+  }
+  if (allRecords.length > 0 && cf in allRecords[0]) {
+    const n = allRecords.length;
+    for (let i = 0; i < n; i++) icons[i] = getIcon(allRecords[i][cf]);
+    populateFilter(cf);
+    drawCanvas();
+  } else {
+    loadData();
+  }
+});
+
+// ── Visualize ─────────────────────────────────────────────────────────────────
+document.getElementById('apply-btn').addEventListener('click', loadData);
+
+async function loadData() {
+  const lat  = document.getElementById('sel-lat').value;
+  const lng  = document.getElementById('sel-lng').value;
+  const conf = document.getElementById('sel-conf').value;
+
+  if (!lat || !lng) { alert('Please select both Latitude and Longitude columns.'); return; }
+
+  // Collect tooltip extra fields
+  const extras = Array.from(
+    document.querySelectorAll('#fields-list input:checked')
+  ).map(el => el.value);
+
+  // Always include label + category fields so they're in every record
+  const labelFieldVal = document.getElementById('sel-label').value;
+  if (labelFieldVal && !extras.includes(labelFieldVal)) extras.push(labelFieldVal);
+
+  const catFieldVal = document.getElementById('sel-category').value;
+  if (catFieldVal && !extras.includes(catFieldVal)) extras.push(catFieldVal);
+
+  const btn = document.getElementById('apply-btn');
+  btn.textContent = 'Loading…';
+  btn.disabled    = true;
+
+  try {
+    const res  = await fetch('/get_data', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ lat, lng, confidence: conf || null, extra_fields: extras }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    allRecords  = data.records;
+    extraFields = extras;
+
+    const n = allRecords.length;
+    xs = new Float64Array(n);
+    ys = new Float64Array(n);
+    cs = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      xs[i] = allRecords[i].x;
+      ys[i] = allRecords[i].y;
+      cs[i] = Math.max(0, Math.min(100, allRecords[i].c));
+    }
+
+    // Pre-compute icons from category field
+    const catField = document.getElementById('sel-category').value;
+    icons = new Array(n).fill('📍');
+    if (catField && n > 0 && catField in allRecords[0]) {
+      for (let i = 0; i < n; i++) icons[i] = getIcon(allRecords[i][catField]);
+      populateFilter(catField);
+    } else {
+      allCategories = [];
+      enabledCategories.clear();
+      document.getElementById('filter-section').style.display = 'none';
+    }
+
+    hasData    = true;
+    baseZoom   = null;
+    dataBounds = L.latLngBounds(allRecords.map(r => [r.y, r.x]));
+
+    if (data.truncated) document.getElementById('file-info').textContent += ' (first 150k shown)';
+    document.getElementById('stat-total').textContent = n.toLocaleString();
+
+    map.once('moveend', () => {
+      const fittedZoom = map.getZoom();
+      const maxConf    = d3.max(cs) || 100;
+      baseZoom = maxConf < 100 ? fittedZoom - Math.log2(100 / maxConf) : fittedZoom;
+      drawCanvas();
+    });
+    map.fitBounds(dataBounds, { padding: [40, 40], animate: false });
+
+    document.getElementById('overlay').style.display       = 'none';
+    document.getElementById('info-bar').style.display      = '';
+    document.getElementById('reset-btn').style.display     = '';
+    document.getElementById('stats-section').style.display = '';
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.textContent = '▶ Visualize';
+    btn.disabled    = false;
+  }
+}
+
+// ── Reset view ────────────────────────────────────────────────────────────────
+function resetView() {
+  if (!dataBounds) return;
+  map.once('moveend', () => {
+    const maxConf = d3.max(cs) || 100;
+    baseZoom = maxConf < 100
+      ? map.getZoom() - Math.log2(100 / maxConf)
+      : map.getZoom();
+    drawCanvas();
+  });
+  map.fitBounds(dataBounds, { padding: [40, 40] });
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const tooltip  = document.getElementById('tooltip');
+let   ttLastMs = 0;
+
+map.on('mousemove', (e) => {
+  const now = Date.now();
+  if (now - ttLastMs < 40) return;
+  ttLastMs = now;
+  if (!hasData || !xs.length) { tooltip.style.display = 'none'; return; }
+
+  const threshold = getThreshold();
+  const catField  = document.getElementById('sel-category').value;
+  const mx = e.containerPoint.x, my = e.containerPoint.y;
+  const W  = canvas.width, H = canvas.height;
+  const hitR2 = 625;   // 25 px radius — larger target for icons
+
+  let bestD = hitR2, bestI = -1;
+  for (let i = 0; i < xs.length; i++) {
+    if (cs[i] < threshold) continue;
+    if (catField && allCategories.length > 0) {
+      const cat = String(allRecords[i][catField] ?? '(unknown)');
+      if (!enabledCategories.has(cat)) continue;
+    }
+    const pt = map.latLngToContainerPoint([ys[i], xs[i]]);
+    if (pt.x < -30 || pt.x > W + 30 || pt.y < -30 || pt.y > H + 30) continue;
+    const d2 = (pt.x - mx) ** 2 + (pt.y - my) ** 2;
+    if (d2 < bestD) { bestD = d2; bestI = i; }
+  }
+
+  if (bestI === -1) { tooltip.style.display = 'none'; return; }
+
+  const rec     = allRecords[bestI];
+  const conf    = cs[bestI];
+  const confCol = document.getElementById('sel-conf').value;
+  const icon    = icons[bestI] || '📍';
+
+  let html = `<div class="tt-head">${icon} Record #${bestI + 1}</div>`;
+  html += row('Lat / Lng', `${ys[bestI].toFixed(5)}, ${xs[bestI].toFixed(5)}`);
+  if (confCol) {
+    html += `<div class="tt-row"><span class="tt-key">Confidence</span>` +
+            `<span class="tt-val" style="color:${confColorHSL(conf)}">${conf.toFixed(1)}</span></div>`;
+  }
+  extraFields.forEach(f => {
+    const v = rec[f];
+    if (v != null) html += row(f, String(v));
+  });
+
+  tooltip.innerHTML  = html;
+  tooltip.style.display = 'block';
+
+  const ttW = 300, ttH = tooltip.offsetHeight, pad = 14;
+  let tx = e.originalEvent.clientX + pad;
+  let ty = e.originalEvent.clientY - ttH / 2;
+  if (tx + ttW > window.innerWidth)  tx = e.originalEvent.clientX - ttW - pad;
+  if (ty < pad)                      ty = pad;
+  if (ty + ttH > window.innerHeight) ty = window.innerHeight - ttH - pad;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+});
+
+map.on('mouseout', () => { tooltip.style.display = 'none'; });
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function row(key, val) {
+  return `<div class="tt-row"><span class="tt-key">${esc(key)}</span><span class="tt-val">${esc(val)}</span></div>`;
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

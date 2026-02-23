@@ -1,0 +1,114 @@
+PLACE VISUALISER — FUNCTIONAL DESCRIPTION
+==========================================
+
+Overview
+--------
+A browser-based geospatial visualisation tool for CSV and JSON/JSONL datasets.
+Built with Python/Flask on the backend and plain HTML/JavaScript on the frontend.
+Runs locally on http://localhost:5004.
+
+Upload any file with latitude/longitude columns and instantly visualise records
+on an interactive OpenStreetMap background. Uses confidence scores to
+progressively reveal lower-quality records as the user zooms in.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTERFACE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Left sidebar — Data Source
+  Upload a CSV or JSON/JSONL file (up to 500 MB, max 200 000 rows loaded).
+  After upload, column names are listed and lat/lng/confidence columns are
+  auto-detected from common naming patterns.
+
+Left sidebar — Column Mapping
+  · Latitude / Longitude  — select the coordinate columns
+  · Confidence            — optional 0–100 score (or 0–1, auto-normalised)
+  · Category field        — used to pick the icon for each record
+                            (auto-detects "featurename", "category", "type")
+
+Left sidebar — Feature Labels
+  Select any column to use as a map label. Labels are drawn in black text
+  above each icon. A spatial grid deduplication prevents label crowding —
+  one label per 80×80 px cell at any zoom level. Auto-detects "poi_name".
+
+Left sidebar — Feature Filter
+  After clicking Visualise, a scrollable checkbox list appears showing all
+  unique category values (sorted by count). Use All / None buttons to quickly
+  toggle groups. Only checked categories are rendered on the map.
+
+Left sidebar — Tooltip Fields
+  Select any columns to include in the hover tooltip shown when the mouse
+  moves over a record.
+
+Left sidebar — Visualise button
+  Fetches the data from the server and renders it on the map. Updates the
+  Statistics panel with total record count and current visible count.
+
+Map area
+  · OpenStreetMap tiles via Leaflet.js
+  · Transparent HTML5 Canvas overlay for icons and labels (no map tiles replaced)
+  · Standard Leaflet pan/zoom controls
+  · Hover tooltip following the mouse cursor
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONFIDENCE-BASED ZOOM FILTERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Records are shown or hidden based on their confidence score relative to the
+current map zoom level:
+
+  threshold = 100 / 2^((currentZoom − baseZoom) / 2)
+
+  · Records with confidence ≥ threshold are drawn.
+  · At the initial zoom level (baseZoom), only records with confidence = 100
+    are visible.
+  · Every 2 Leaflet zoom levels zoomed in, the threshold halves, gradually
+    revealing lower-confidence records.
+  · baseZoom is set at load time by fitting the map to the data bounds.
+
+Confidence auto-normalisation (server-side):
+  · Values in [0, 1]     → multiplied by 100
+  · Values > 100         → min-max scaled to [0, 100]
+  · Values already in (1, 100] → used as-is
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ICONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Each record is rendered as an emoji icon derived from its category value.
+Keyword matching (case-insensitive) covers ~30 POI categories, including:
+
+  🍽️  restaurant / dining / food / bistro
+  ☕  cafe / coffee / bakery / pastry
+  🍺  bar / pub / brewery / beer / wine
+  🏨  hotel / hostel / lodging / accommodation
+  🏪  shop / store / retail / market / supermarket
+  ⛽  fuel / petrol / gas station
+  🏥  hospital / clinic / medical / pharmacy / health
+  🏫  school / university / college / education
+  🏛️  museum / gallery / theatre / cinema / arts
+  ⛪  church / cathedral / mosque / synagogue / temple
+  🏦  bank / atm / finance
+  🚌  bus / transit / transport / station / airport
+  🌳  park / garden / nature / forest / recreation
+  🏨  parking / car park
+  📍  (default — no matching category)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TECHNICAL NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  · Language / framework : Python 3, Flask, pandas
+  · Frontend             : Single HTML file (templates/index.html),
+                           Leaflet.js 1.9.4 via CDN for map rendering,
+                           HTML5 Canvas for point/label rendering
+  · Port                 : 5004
+  · Startup              : python3 app.py
+  · Max rows loaded      : 200 000 (upload); 150 000 (rendered)
+  · File formats         : CSV, JSON, JSONL / NDJSON
+  · Canvas rendering     : Float64Array typed arrays + viewport culling
+                           for smooth performance at large record counts
