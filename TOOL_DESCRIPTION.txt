@@ -144,19 +144,48 @@ Full keyword-to-icon mapping (first match wins):
   📍  (default — no matching category)
 
 
+Left sidebar — Area Viewer
+  A second independent section below the point-data controls.
+  Upload a CSV file that contains a WKT (Well-Known Text) geometry column.
+
+  · Upload CSV           — up to 50 000 rows; column names returned immediately
+  · WKT geometry column  — select the column containing WKT strings
+                            (auto-detected: geometry / wkt / geom / shape /
+                             polygon / multipolygon / the_geom)
+  · Filter by field      — select any property column to colour and filter by
+                            (auto-detected: admin_level → any column containing
+                             "admin" → first column)
+  · Show Areas button    — sends the WKT column to the server; shapely parses
+                           each WKT string into a GeoJSON geometry; the result
+                           is rendered as a Leaflet GeoJSON layer of coloured
+                           semi-transparent polygons. The map auto-fits to the
+                           layer bounds on first load.
+  · Filter checkboxes    — one row per unique value of the chosen filter field,
+                           each with a colour swatch and feature count.
+                           Toggling a checkbox hides/shows those polygons
+                           in-place (no server round-trip).
+  · All / None buttons   — bulk-toggle the filter checkboxes.
+  · ↺ Refresh button     — re-fetches from server (use after changing WKT column).
+  · Clear Areas button   — removes the layer from the map.
+  · Hover tooltip        — shows all properties of the hovered polygon.
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TECHNICAL NOTES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  · Language / framework : Python 3, Flask, pandas
+  · Language / framework : Python 3, Flask, pandas, shapely
   · Frontend             : Single HTML file (templates/index.html),
                            Leaflet.js 1.9.4 via CDN for map rendering,
                            D3.js v7 (d3.max for baseZoom calculation),
-                           HTML5 Canvas for point/label rendering
+                           HTML5 Canvas for point/label rendering,
+                           Leaflet GeoJSON layer for area rendering
   · Port                 : 5004
   · Startup              : python3 app.py
-  · Max rows loaded      : 200 000 (upload); 150 000 (rendered)
-  · File formats         : CSV, JSON, JSONL / NDJSON
+  · Max rows loaded      : 200 000 (point upload); 150 000 (rendered);
+                           50 000 (area upload); 10 000 (area rendered)
+  · File formats         : CSV, JSON, JSONL / NDJSON (points);
+                           CSV with WKT geometry column (areas)
   · Canvas rendering     : Float64Array typed arrays + viewport culling
                            for smooth performance at large record counts
   · Smart re-fetch       : Changing label/category field only triggers a

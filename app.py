@@ -6,7 +6,8 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB
 
-_store = {}   # holds the loaded DataFrame
+_store = {}       # holds the loaded DataFrame
+_area_store = {}  # holds the loaded GeoJSON features
 
 
 @app.route('/')
@@ -127,6 +128,81 @@ def get_data():
         'records': records,
         'total': len(records),
         'truncated': truncated,
+    })
+
+
+@app.route('/upload_areas', methods=['POST'])
+def upload_areas():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    f = request.files['file']
+    name = (f.filename or '').lower()
+    try:
+        if name.endswith('.csv'):
+            df = pd.read_csv(f, nrows=50_000)
+        else:
+            return jsonify({'error': 'Unsupported format. Use CSV with a WKT geometry column.'}), 400
+
+        cols = list(df.columns)
+        _area_store['df'] = df
+
+        wkt_keywords = ['geometry', 'wkt', 'geom', 'shape', 'polygon', 'multipolygon', 'the_geom']
+        wkt_guess = next(
+            (c for kw in wkt_keywords for c in cols if kw in c.lower()),
+            None
+        )
+
+        return jsonify({
+            'row_count': len(df),
+            'columns': cols,
+            'wkt_guess': wkt_guess,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/get_areas', methods=['POST'])
+def get_areas():
+    if 'df' not in _area_store:
+        return jsonify({'error': 'No area data loaded'}), 400
+
+    body = request.json or {}
+    wkt_col = body.get('wkt_col')
+    df = _area_store['df']
+
+    if not wkt_col or wkt_col not in df.columns:
+        return jsonify({'error': f'WKT column not found: {wkt_col}'}), 400
+
+    try:
+        from shapely import wkt as shapely_wkt
+        from shapely.geometry import mapping
+    except ImportError:
+        return jsonify({'error': 'shapely is required. Install with: pip install shapely'}), 500
+
+    prop_cols = [c for c in df.columns if c != wkt_col]
+    valid = df.dropna(subset=[wkt_col])
+    MAX = 10_000
+    truncated = len(valid) > MAX
+    rows = valid.head(MAX)
+
+    features = []
+    for _, row in rows.iterrows():
+        try:
+            geom = shapely_wkt.loads(str(row[wkt_col]))
+            props = {}
+            for col in prop_cols:
+                val = row[col]
+                props[col] = None if (val != val) else val  # NaN → None
+            features.append({'type': 'Feature', 'geometry': mapping(geom), 'properties': props})
+        except Exception:
+            continue
+
+    return jsonify({
+        'type': 'FeatureCollection',
+        'features': features,
+        'truncated': truncated,
+        'total': len(valid),
     })
 
 

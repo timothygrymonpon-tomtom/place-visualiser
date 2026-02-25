@@ -179,6 +179,57 @@
       padding-top: 2px;
     }
 
+    .section-divider {
+      border: none;
+      border-top: 1px solid #252840;
+      margin: 4px 0;
+    }
+
+    #area-upload-btn {
+      width: 100%;
+      padding: 9px;
+      background: #0e7490;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #area-upload-btn:hover { background: #0c6378; }
+    #area-upload-btn:disabled { background: #1a2e38; color: #3a5a68; cursor: default; }
+
+    #area-show-btn {
+      width: 100%;
+      padding: 10px;
+      background: #0e7490;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    #area-show-btn:hover { background: #0c6378; }
+    #area-show-btn:disabled { background: #1a2e38; color: #3a5a68; cursor: default; }
+
+    #area-clear-btn {
+      width: 100%;
+      padding: 7px;
+      background: #2a2e4a;
+      color: #8090b8;
+      border: 1px solid #3d4270;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.12s;
+      flex-shrink: 0;
+    }
+    #area-clear-btn:hover { background: #3a3e60; color: #c0c8e8; }
+
     /* ── MAIN MAP AREA ───────────────────────────────────────────────── */
     #main {
       flex: 1;
@@ -386,6 +437,40 @@
       <span class="stat-val" id="stat-zoom">—</span>
     </div>
   </div>
+
+
+  <hr class="section-divider">
+
+  <!-- Area Viewer — file upload -->
+  <div class="section">
+    <div class="section-title">Area Viewer</div>
+    <input type="file" id="area-file-input" accept=".csv">
+    <button id="area-upload-btn" onclick="document.getElementById('area-file-input').click()">
+      📂 Upload CSV
+    </button>
+    <div id="area-file-info" style="margin-top:7px;font-size:11px;color:#5c6280;min-height:14px;word-break:break-all">
+      No file loaded — CSV with WKT geometry
+    </div>
+  </div>
+
+  <!-- Area Viewer — controls (visible after upload) -->
+  <div class="section" id="area-controls-section" style="display:none">
+    <div class="section-title">Area Controls</div>
+    <span class="field-label">WKT geometry column</span>
+    <select id="sel-area-wkt"></select>
+    <span class="field-label">Filter by field</span>
+    <select id="sel-area-field"></select>
+    <div style="margin-top:8px">
+      <div class="mini-btn-row">
+        <button class="mini-btn" onclick="areaFilterAll(true)">All</button>
+        <button class="mini-btn" onclick="areaFilterAll(false)">None</button>
+      </div>
+      <div id="area-filter-list" class="scrollable-list" style="display:none; max-height:130px"></div>
+    </div>
+  </div>
+
+  <button id="area-show-btn" disabled>▶ Show Areas</button>
+  <button id="area-clear-btn" onclick="clearAreas()" style="display:none">✕ Clear Areas</button>
 
 </div>
 
@@ -922,6 +1007,229 @@ function row(key, val) {
 }
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Area Viewer ───────────────────────────────────────────────────────────────
+let areaFeatures    = [];
+let areaGeoLayer    = null;
+let areaColors      = {};
+let enabledAreaVals = new Set();
+
+const AREA_PALETTE = [
+  '#4fc3f7','#81c784','#ffb74d','#e57373','#ba68c8',
+  '#4dd0e1','#aed581','#ffd54f','#ff8a65','#90a4ae',
+  '#f48fb1','#80cbc4','#ce93d8','#a5d6a7','#fff176',
+  '#ef9a9a','#b39ddb','#80deea','#c5e1a5','#ffcc80',
+];
+
+document.getElementById('area-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const btn  = document.getElementById('area-upload-btn');
+  const info = document.getElementById('area-file-info');
+  btn.disabled     = true;
+  info.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res  = await fetch('/upload_areas', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    info.textContent = `${file.name} · ${data.row_count.toLocaleString()} rows`;
+    buildAreaFieldSelector(data.columns, data.wkt_guess);
+    document.getElementById('area-controls-section').style.display = '';
+    document.getElementById('area-show-btn').disabled = false;
+  } catch (err) {
+    info.textContent = '❌ ' + err.message;
+  } finally {
+    btn.disabled   = false;
+    e.target.value = '';
+  }
+});
+
+function buildAreaFieldSelector(cols, wktGuess) {
+  const opts = cols.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+
+  const wktSel = document.getElementById('sel-area-wkt');
+  wktSel.innerHTML = opts;
+  if (wktGuess) wktSel.value = wktGuess;
+
+  const fieldSel = document.getElementById('sel-area-field');
+  fieldSel.innerHTML = opts;
+  const def = cols.find(k => k === 'admin_level')
+           || cols.find(k => k.toLowerCase().includes('admin'))
+           || cols[0];
+  if (def) fieldSel.value = def;
+}
+
+document.getElementById('sel-area-field').addEventListener('change', () => {
+  if (areaFeatures.length > 0) renderAreas();
+});
+
+document.getElementById('area-show-btn').addEventListener('click', loadAreas);
+
+async function loadAreas() {
+  const btn = document.getElementById('area-show-btn');
+  btn.textContent = 'Loading…';
+  btn.disabled    = true;
+
+  try {
+    const wktCol = document.getElementById('sel-area-wkt').value;
+    const res  = await fetch('/get_areas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wkt_col: wktCol }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    areaFeatures = data.features;
+    if (data.truncated) {
+      document.getElementById('area-file-info').textContent += ' (first 10k shown)';
+    }
+
+    renderAreas();
+    // Fit map to the loaded areas
+    if (areaGeoLayer) {
+      try {
+        const b = areaGeoLayer.getBounds();
+        if (b.isValid()) map.fitBounds(b, { padding: [40, 40], animate: false });
+      } catch (_) {}
+    }
+    document.getElementById('area-clear-btn').style.display = '';
+    btn.textContent = '↺ Refresh';
+  } catch (err) {
+    alert('Error loading areas: ' + err.message);
+    btn.textContent = '▶ Show Areas';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderAreas() {
+  if (areaGeoLayer) { map.removeLayer(areaGeoLayer); areaGeoLayer = null; }
+  if (!areaFeatures.length) return;
+
+  const field = document.getElementById('sel-area-field').value;
+
+  // Collect unique values and assign colours
+  const valSet = new Set();
+  for (const f of areaFeatures) {
+    valSet.add(String((f.properties || {})[field] ?? '(unknown)'));
+  }
+  const vals = [...valSet].sort((a, b) => {
+    const na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+  areaColors = {};
+  vals.forEach((v, i) => { areaColors[v] = AREA_PALETTE[i % AREA_PALETTE.length]; });
+  enabledAreaVals = new Set(vals);
+
+  buildAreaFilterList(vals, field);
+
+  areaGeoLayer = L.geoJSON(
+    { type: 'FeatureCollection', features: areaFeatures },
+    {
+      style: (feat) => {
+        const v = String((feat.properties || {})[field] ?? '(unknown)');
+        const on = enabledAreaVals.has(v);
+        return {
+          color:       areaColors[v] || '#4fc3f7',
+          weight:      1.5,
+          opacity:     on ? 0.85 : 0,
+          fillColor:   areaColors[v] || '#4fc3f7',
+          fillOpacity: on ? 0.22 : 0,
+        };
+      },
+      onEachFeature: (feat, layer) => {
+        layer.on('mouseover', () => {
+          const props = feat.properties || {};
+          let html = '<div class="tt-head">Area</div>';
+          for (const [k, v] of Object.entries(props)) {
+            if (v != null) html += row(k, String(v));
+          }
+          tooltip.innerHTML  = html;
+          tooltip.style.display = 'block';
+        });
+        layer.on('mousemove', (e) => {
+          const pad = 14, ttW = 300, ttH = tooltip.offsetHeight;
+          let tx = e.originalEvent.clientX + pad;
+          let ty = e.originalEvent.clientY - ttH / 2;
+          if (tx + ttW > window.innerWidth)  tx = e.originalEvent.clientX - ttW - pad;
+          if (ty < pad) ty = pad;
+          if (ty + ttH > window.innerHeight) ty = window.innerHeight - ttH - pad;
+          tooltip.style.left = tx + 'px';
+          tooltip.style.top  = ty + 'px';
+        });
+        layer.on('mouseout', () => { tooltip.style.display = 'none'; });
+      },
+    }
+  ).addTo(map);
+}
+
+function buildAreaFilterList(vals, field) {
+  const counts = {};
+  for (const f of areaFeatures) {
+    const v = String((f.properties || {})[field] ?? '(unknown)');
+    counts[v] = (counts[v] || 0) + 1;
+  }
+
+  const list = document.getElementById('area-filter-list');
+  list.style.display = '';
+  list.innerHTML = '';
+  for (const v of vals) {
+    const id  = 'av-' + Math.random().toString(36).slice(2);
+    const col = areaColors[v] || '#4fc3f7';
+    const div = document.createElement('div');
+    div.className = 'field-item';
+    div.innerHTML = `
+      <input type="checkbox" id="${id}" value="${esc(v)}" checked>
+      <label for="${id}">
+        <span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;margin-right:4px;vertical-align:middle;opacity:0.85"></span>
+        ${esc(v)} <span style="color:#4a5270;font-size:10px">${counts[v].toLocaleString()}</span>
+      </label>
+    `;
+    div.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) enabledAreaVals.add(v);
+      else enabledAreaVals.delete(v);
+      updateAreaVisibility();
+    });
+    list.appendChild(div);
+  }
+}
+
+function updateAreaVisibility() {
+  if (!areaGeoLayer) return;
+  const field = document.getElementById('sel-area-field').value;
+  areaGeoLayer.eachLayer(layer => {
+    const v  = String((layer.feature?.properties || {})[field] ?? '(unknown)');
+    const on = enabledAreaVals.has(v);
+    layer.setStyle({ opacity: on ? 0.85 : 0, fillOpacity: on ? 0.22 : 0 });
+  });
+}
+
+function areaFilterAll(enable) {
+  document.querySelectorAll('#area-filter-list input[type=checkbox]').forEach(cb => {
+    cb.checked = enable;
+    if (enable) enabledAreaVals.add(cb.value);
+    else enabledAreaVals.delete(cb.value);
+  });
+  updateAreaVisibility();
+}
+
+function clearAreas() {
+  if (areaGeoLayer) { map.removeLayer(areaGeoLayer); areaGeoLayer = null; }
+  areaFeatures = [];
+  const list = document.getElementById('area-filter-list');
+  list.innerHTML     = '';
+  list.style.display = 'none';
+  document.getElementById('area-clear-btn').style.display  = 'none';
+  document.getElementById('area-show-btn').textContent     = '▶ Show Areas';
 }
 </script>
 </body>
